@@ -38,6 +38,7 @@ public class AugmentedImageRenderer {
   private final ObjectRenderer imageFrameUpperRight = new ObjectRenderer();
   private final ObjectRenderer imageFrameLowerLeft = new ObjectRenderer();
   private final ObjectRenderer imageFrameLowerRight = new ObjectRenderer();
+  private final ObjectRenderer mazeRenderer = new ObjectRenderer();
 
   public AugmentedImageRenderer() {}
 
