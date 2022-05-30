@@ -34,91 +34,66 @@ public class AugmentedImageRenderer {
     0x009688, 0x4CAF50, 0x8BC34A, 0xCDDC39, 0xFFEB3B, 0xFFC107, 0xFF9800,
   };
 
-  private final ObjectRenderer imageFrameUpperLeft = new ObjectRenderer();
-  private final ObjectRenderer imageFrameUpperRight = new ObjectRenderer();
-  private final ObjectRenderer imageFrameLowerLeft = new ObjectRenderer();
-  private final ObjectRenderer imageFrameLowerRight = new ObjectRenderer();
   private final ObjectRenderer mazeRenderer = new ObjectRenderer();
-
+  private final ObjectRenderer andyRenderer = new ObjectRenderer();
+  private Pose andyPose = Pose.IDENTITY;
   public AugmentedImageRenderer() {}
 
   public void createOnGlThread(Context context) throws IOException {
+    mazeRenderer.createOnGlThread(
+            context, "models/green-maze/GreenMaze.obj", "models/frame_base.png");
+    mazeRenderer.setMaterialProperties(0.0f, 3.5f, 1.0f, 6.0f);
 
-    imageFrameUpperLeft.createOnGlThread(
-        context, "models/frame_upper_left.obj", "models/frame_base.png");
-    imageFrameUpperLeft.setMaterialProperties(0.0f, 3.5f, 1.0f, 6.0f);
-    imageFrameUpperLeft.setBlendMode(BlendMode.AlphaBlending);
-
-    imageFrameUpperRight.createOnGlThread(
-        context, "models/frame_upper_right.obj", "models/frame_base.png");
-    imageFrameUpperRight.setMaterialProperties(0.0f, 3.5f, 1.0f, 6.0f);
-    imageFrameUpperRight.setBlendMode(BlendMode.AlphaBlending);
-
-    imageFrameLowerLeft.createOnGlThread(
-        context, "models/frame_lower_left.obj", "models/frame_base.png");
-    imageFrameLowerLeft.setMaterialProperties(0.0f, 3.5f, 1.0f, 6.0f);
-    imageFrameLowerLeft.setBlendMode(BlendMode.AlphaBlending);
-
-    imageFrameLowerRight.createOnGlThread(
-        context, "models/frame_lower_right.obj", "models/frame_base.png");
-    imageFrameLowerRight.setMaterialProperties(0.0f, 3.5f, 1.0f, 6.0f);
-    imageFrameLowerRight.setBlendMode(BlendMode.AlphaBlending);
+    andyRenderer.createOnGlThread(
+            context, "models/andy.obj", "models/andy.png");
+    andyRenderer.setMaterialProperties(0.0f, 3.5f, 1.0f, 6.0f);
   }
 
+  // Adjust size of detected image and render it on-screen
   public void draw(
-      float[] viewMatrix,
-      float[] projectionMatrix,
-      AugmentedImage augmentedImage,
-      Anchor centerAnchor,
-      float[] colorCorrectionRgba) {
+          float[] viewMatrix,
+          float[] projectionMatrix,
+          AugmentedImage augmentedImage,
+          Anchor centerAnchor,
+          float[] colorCorrectionRgba) {
     float[] tintColor =
-        convertHexToColor(TINT_COLORS_HEX[augmentedImage.getIndex() % TINT_COLORS_HEX.length]);
+            convertHexToColor(TINT_COLORS_HEX[augmentedImage.getIndex() % TINT_COLORS_HEX.length]);
 
-    Pose[] localBoundaryPoses = {
-      Pose.makeTranslation(
-          -0.5f * augmentedImage.getExtentX(),
-          0.0f,
-          -0.5f * augmentedImage.getExtentZ()), // upper left
-      Pose.makeTranslation(
-          0.5f * augmentedImage.getExtentX(),
-          0.0f,
-          -0.5f * augmentedImage.getExtentZ()), // upper right
-      Pose.makeTranslation(
-          0.5f * augmentedImage.getExtentX(),
-          0.0f,
-          0.5f * augmentedImage.getExtentZ()), // lower right
-      Pose.makeTranslation(
-          -0.5f * augmentedImage.getExtentX(),
-          0.0f,
-          0.5f * augmentedImage.getExtentZ()) // lower left
-    };
+    final float mazeEdgeSize = 492.65f; // Magic number of maze size
+    final float maxImageEdgeSize = Math.max(augmentedImage.getExtentX(), augmentedImage.getExtentZ()); // Get largest detected image edge size
 
     Pose anchorPose = centerAnchor.getPose();
-    Pose[] worldBoundaryPoses = new Pose[4];
-    for (int i = 0; i < 4; ++i) {
-      worldBoundaryPoses[i] = anchorPose.compose(localBoundaryPoses[i]);
-    }
 
-    float scaleFactor = 1.0f;
+    float mazeScaleFactor = maxImageEdgeSize / mazeEdgeSize; // scale to set Maze to image size
     float[] modelMatrix = new float[16];
 
-    worldBoundaryPoses[0].toMatrix(modelMatrix, 0);
-    imageFrameUpperLeft.updateModelMatrix(modelMatrix, scaleFactor);
-    imageFrameUpperLeft.draw(viewMatrix, projectionMatrix, colorCorrectionRgba, tintColor);
+    // OpenGL Matrix operation is in the order: Scale, rotation and Translation
+    // So the manual adjustment is after scale
+    // The 251.3f and 129.0f is magic number from the maze obj file
+    // You mustWe need to do this adjustment because the maze obj file
+    // is not centered around origin. Normally when you
+    // work with your own model, you don't have this problem.
+    Pose mazeModelLocalOffset = Pose.makeTranslation(
+            -251.3f * mazeScaleFactor,
+            0.0f,
+            129.0f * mazeScaleFactor);
+    anchorPose.compose(mazeModelLocalOffset).toMatrix(modelMatrix, 0);
+    mazeRenderer.updateModelMatrix(modelMatrix, mazeScaleFactor, mazeScaleFactor/10.0f, mazeScaleFactor); // This line relies on a change in ObjectRenderer.updateModelMatrix later in this codelab.
+    mazeRenderer.draw(viewMatrix, projectionMatrix, colorCorrectionRgba, tintColor);
 
-    worldBoundaryPoses[1].toMatrix(modelMatrix, 0);
-    imageFrameUpperRight.updateModelMatrix(modelMatrix, scaleFactor);
-    imageFrameUpperRight.draw(viewMatrix, projectionMatrix, colorCorrectionRgba, tintColor);
+    Pose andyPoseInImageSpace = Pose.makeTranslation(
+            andyPose.tx() * mazeScaleFactor,
+            andyPose.ty() * mazeScaleFactor,
+            andyPose.tz() * mazeScaleFactor);
 
-    worldBoundaryPoses[2].toMatrix(modelMatrix, 0);
-    imageFrameLowerRight.updateModelMatrix(modelMatrix, scaleFactor);
-    imageFrameLowerRight.draw(viewMatrix, projectionMatrix, colorCorrectionRgba, tintColor);
-
-    worldBoundaryPoses[3].toMatrix(modelMatrix, 0);
-    imageFrameLowerLeft.updateModelMatrix(modelMatrix, scaleFactor);
-    imageFrameLowerLeft.draw(viewMatrix, projectionMatrix, colorCorrectionRgba, tintColor);
+    anchorPose.compose(andyPoseInImageSpace).toMatrix(modelMatrix, 0);
+    andyRenderer.updateModelMatrix(modelMatrix, 0.05f);
+    andyRenderer.draw(viewMatrix, projectionMatrix, colorCorrectionRgba, tintColor);
   }
 
+  public void updateAndyPose(Pose pose) {
+    andyPose = pose;
+  }
   private static float[] convertHexToColor(int colorHex) {
     // colorHex is in 0xRRGGBB format
     float red = ((colorHex & 0xFF0000) >> 16) / 255.0f * TINT_INTENSITY;
